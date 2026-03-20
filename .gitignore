@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Environment
+condaenv/
+venv/
+.env
+
+# Chrome profile (contains sensitive session data)
+chrome_profile/
+
+# Output (downloaded content)
+output/
+
+# Cookies and tokens
+cookies.json
+*.json.token
+
+# Debug files
+*.png
+debug*.png
+login_status*.png
+qrcode*.png
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# State
+state.json
