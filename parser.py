@@ -2,9 +2,11 @@
 内容解析模块 - 知识星球爬虫
 将话题内容转换为Markdown格式
 """
+import os
 import re
 from datetime import datetime
 from typing import Dict, List, Optional
+from urllib.parse import urlparse, unquote
 
 from markdownify import markdownify as md
 
@@ -199,6 +201,39 @@ class TopicParser:
                     "type": uri.get("type")
                 })
 
+        # 3. 从文本内容中提取文件链接
+        text_content = ""
+        if topic.get("type") == "talk":
+            text_content = talk.get("text", "")
+        elif "text" in topic:
+            text_content = topic["text"]
+
+        if text_content:
+            # 提取 <a href="..."> 链接
+            link_pattern = r'<a[^>]+href=["\']([^"\']+(?:\.pdf|\.docx|\.doc|\.xlsx|\.xls|\.pptx|\.ppt|\.txt|\.md))["\'][^>]*>([^<]*)</a>'
+            for match in re.finditer(link_pattern, text_content, re.IGNORECASE):
+                url = match.group(1)
+                name = match.group(2).strip() or self._extract_filename_from_url(url)
+                if url and not any(f.get("url") == url for f in files):
+                    files.append({
+                        "name": name,
+                        "url": url,
+                        "size": 0,
+                        "type": "file"
+                    })
+
+            # 提取直接的文件 URL
+            file_url_pattern = r'(https?://[^\s"\'<>]+\.(?:pdf|docx?|xlsx?|pptx?|txt|md))'
+            for match in re.finditer(file_url_pattern, text_content, re.IGNORECASE):
+                url = match.group(1)
+                if url and not any(f.get("url") == url for f in files):
+                    files.append({
+                        "name": self._extract_filename_from_url(url),
+                        "url": url,
+                        "size": 0,
+                        "type": "file"
+                    })
+
         return files
 
     def _format_time(self, timestamp) -> str:
@@ -286,11 +321,6 @@ class TopicParser:
 
     def _extract_filename_from_url(self, url: str) -> str:
         """从URL提取文件名"""
-        from urllib.parse import urlparse, unquote
         parsed = urlparse(url)
         filename = os.path.basename(unquote(parsed.path))
-        return filename or f"image_{hash(url) % 100000}"
-
-
-# 导入os用于上面的函数
-import os
+        return filename or f"file_{hash(url) % 100000}"
