@@ -54,6 +54,13 @@ class FileDownloader:
             return "media"
         return "other"
 
+    def _extract_filename_from_url(self, url: str) -> str:
+        """从URL提取文件名"""
+        from urllib.parse import urlparse, unquote
+        parsed = urlparse(url)
+        filename = os.path.basename(unquote(parsed.path))
+        return filename or f"file_{hash(url) % 100000}"
+
     def _sanitize_filename(self, filename: str, max_length: int = 100) -> str:
         """清理文件名，移除非法字符"""
         # 移除或替换非法字符

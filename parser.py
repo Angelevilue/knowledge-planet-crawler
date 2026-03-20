@@ -103,25 +103,47 @@ class TopicParser:
         """提取话题中的图片"""
         images = []
 
-        # 获取文本内容
+        # 获取 talk 对象
+        talk = topic.get("talk", {}) if topic.get("type") == "talk" else {}
+
+        # 1. 从 talk.images 结构化数组中提取 (API 返回的原始图片数据)
+        talk_images = talk.get("images", [])
+        for img in talk_images:
+            # 获取原始图片 URL (最高质量)
+            img_url = ""
+            if isinstance(img, dict):
+                original = img.get("original", {})
+                if isinstance(original, dict):
+                    img_url = original.get("url", "")
+                elif img.get("url"):
+                    img_url = img.get("url")
+            if img_url:
+                images.append({
+                    "url": img_url,
+                    "type": "image"
+                })
+
+        # 2. 从文本内容中提取 HTML 图片
         text_content = ""
-        if topic.get("type") == "talk" and "talk" in topic:
-            text_content = topic["talk"].get("text", "")
+        if topic.get("type") == "talk":
+            text_content = talk.get("text", "")
         elif "text" in topic:
             text_content = topic["text"]
         elif "question" in topic:
             text_content = topic["question"].get("description", "")
 
-        # 从文本中提取图片 (data-src格式)
         if text_content:
+            # data-src 格式
             img_pattern = r'<img[^>]+data-src=["\']([^"\']+)["\'][^>]*>'
             for match in re.finditer(img_pattern, text_content):
-                images.append({
-                    "url": match.group(1),
-                    "type": "image"
-                })
+                url = match.group(1)
+                if not any(img["url"] == url for img in images):
+                    images.append({
+                        "url": url,
+                        "type": "image"
+                    })
 
-            # 也尝试 src 格式
+            # src 格式
             img_pattern2 = r'<img[^>]+src=["\']([^"\']+(?:\.jpg|\.jpeg|\.png|\.gif|\.webp))["\'][^>]*>'
             for match in re.finditer(img_pattern2, text_content):
                 url = match.group(1)
@@ -145,27 +167,37 @@ class TopicParser:
         """提取话题中的附件"""
         files = []
 
-        # 提取文件信息
-        if "texts" in topic:
-            for item in topic["texts"]:
-                if item.get("type") == "file":
-                    files.append({
-                        "name": item.get("name", "未知文件"),
-                        "url": item.get("url", ""),
-                        "size": item.get("size", 0),
-                        "type": "file"
-                    })
+        # 获取 talk 对象
+        talk = topic.get("talk", {}) if topic.get("type") == "talk" else {}
 
-        # 从resource_uris提取
-        if "resource_uris" in topic:
-            for uri in topic["resource_uris"]:
-                if uri.get("type") in ("file", "video", "audio"):
-                    files.append({
-                        "name": uri.get("name", "未知文件"),
-                        "url": uri.get("uri", ""),
-                        "size": uri.get("size", 0),
-                        "type": uri.get("type")
-                    })
+        # 1. 从 talk.texts 提取
+        talk_texts = talk.get("texts", topic.get("texts", []))
+        for item in talk_texts:
+            if item.get("type") == "file":
+                files.append({
+                    "name": item.get("name", "未知文件"),
+                    "url": item.get("url", ""),
+                    "size": item.get("size", 0),
+                    "type": "file"
+                })
+            elif item.get("type") in ("video", "audio"):
+                files.append({
+                    "name": item.get("name", "未知文件"),
+                    "url": item.get("url", ""),
+                    "size": item.get("size", 0),
+                    "type": item.get("type")
+                })
+
+        # 2. 从 talk.resource_uris 或 topic.resource_uris 提取
+        resource_uris = talk.get("resource_uris", topic.get("resource_uris", []))
+        for uri in resource_uris:
+            if uri.get("type") in ("file", "video", "audio"):
+                files.append({
+                    "name": uri.get("name", "未知文件"),
+                    "url": uri.get("uri", ""),
+                    "size": uri.get("size", 0),
+                    "type": uri.get("type")
+                })
 
         return files
 

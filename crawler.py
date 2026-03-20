@@ -2,6 +2,7 @@
 爬虫核心模块 - 知识星球爬虫
 获取话题列表和详情
 """
+import os
 import time
 from typing import Dict, List, Optional
 
@@ -274,5 +275,3 @@ def main():
         crawler.crawl_all(max_count=args.max)
 
 
-# 导入os
-import os
