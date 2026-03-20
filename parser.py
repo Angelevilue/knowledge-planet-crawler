@@ -172,7 +172,19 @@ class TopicParser:
         # 获取 talk 对象
         talk = topic.get("talk", {}) if topic.get("type") == "talk" else {}
 
-        # 1. 从 talk.texts 提取
+        # 1. 从 talk.files 提取 (知识星球 API 格式: [{file_id, name, hash, size, ...}])
+        talk_files = talk.get("files", [])
+        for item in talk_files:
+            if item.get("file_id"):
+                files.append({
+                    "file_id": item.get("file_id"),
+                    "name": item.get("name", "未知文件"),
+                    "hash": item.get("hash", ""),
+                    "size": item.get("size", 0),
+                    "type": "file"
+                })
+
+        # 2. 从 talk.texts 提取
         talk_texts = talk.get("texts", topic.get("texts", []))
         for item in talk_texts:
             if item.get("type") == "file":
@@ -190,7 +202,7 @@ class TopicParser:
                     "type": item.get("type")
                 })
 
-        # 2. 从 talk.resource_uris 或 topic.resource_uris 提取
+        # 3. 从 talk.resource_uris 或 topic.resource_uris 提取
         resource_uris = talk.get("resource_uris", topic.get("resource_uris", []))
         for uri in resource_uris:
             if uri.get("type") in ("file", "video", "audio"):
@@ -201,7 +213,7 @@ class TopicParser:
                     "type": uri.get("type")
                 })
 
-        # 3. 从文本内容中提取文件链接
+        # 4. 从文本内容中提取文件链接
         text_content = ""
         if topic.get("type") == "talk":
             text_content = talk.get("text", "")

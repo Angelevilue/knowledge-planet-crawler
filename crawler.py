@@ -168,13 +168,140 @@ class KnowledgePlanetCrawler:
                     img["local_path"] = local_path
 
         # 下载附件
-        for file in parsed_topic.get("files", []):
-            url = file.get("url")
-            if url:
-                filename = file.get("name", downloader._extract_filename_from_url(url))
-                local_path = downloader.download_document(url, filename)
+        for file_info in parsed_topic.get("files", []):
+            file_id = file_info.get("file_id")
+            filename = file_info.get("name", f"file_{file_id}")
+            file_size = file_info.get("size", 0)
+
+            # 检查是否已下载
+            local_file = os.path.join(files_dir, filename)
+            if os.path.exists(local_file):
+                print(f"文件已存在，跳过: {filename}")
+                file_info["local_path"] = local_file
+                continue
+
+            # 获取下载 URL
+            download_url = self._get_file_download_url(topic_id, file_id, filename)
+            if download_url:
+                local_path = downloader.download_document(download_url, filename)
                 if local_path:
-                    file["local_path"] = local_path
+                    file_info["local_path"] = local_path
+            else:
+                print(f"无法获取文件下载链接: {filename} ({file_size / 1024 / 1024:.1f}MB)")
+
+    def _get_file_download_url(self, topic_id: str, file_id: str, filename: str) -> str:
+        """
+        使用 Selenium 获取文件下载 URL
+
+        Args:
+            topic_id: 话题ID
+            file_id: 文件ID
+            filename: 文件名
+
+        Returns:
+            文件下载 URL
+        """
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+            from selenium.webdriver.chrome.service import Service
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            import time
+            import os
+
+            # 检查 Chrome profile 是否存在
+            profile_dir = "/Users/zephyrmuse/Projects/Crawler/Knowledge_planet/chrome_profile"
+            if not os.path.exists(profile_dir):
+                print(f"Chrome profile 不存在: {profile_dir}")
+                return None
+
+            # 设置 Chrome 选项 - 不使用 headless，避免一些兼容性问题
+            chrome_options = Options()
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--window-size=1920,1080")
+            chrome_options.add_argument(f"--user-data-dir={profile_dir}")
+            # 禁用弹出拦截
+            chrome_options.add_argument("--disable-popup-blocking")
+            # 禁用自动化标识
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option("useAutomationExtension", False)
+
+            service = Service()
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+
+            # 添加 js 脚本防止检测
+            driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+                "source": """
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    })
+                """
+            })
+
+            try:
+                # 打开话题页面
+                topic_url = f"https://wx.zsxq.com/d/{topic_id}"
+                print(f"打开页面: {topic_url}")
+                driver.get(topic_url)
+                time.sleep(8)
+
+                # 检查是否需要登录
+                if "login" in driver.current_url.lower():
+                    print("需要登录，请先在浏览器中登录")
+                    return None
+
+                # 查找文件元素
+                wait = WebDriverWait(driver, 20)
+                file_elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".file")))
+
+                # 获取文件信息
+                file_name_elem = file_elem.find_element(By.CSS_SELECTOR, ".file-name")
+                print(f"找到文件: {file_name_elem.text}")
+
+                # 查找下载按钮
+                btn_wrapper = file_elem.find_element(By.CSS_SELECTOR, ".btn-wrapper")
+                download_btn = btn_wrapper.find_element(By.CSS_SELECTOR, ".btn.download")
+
+                # 获取 onclick 或 href
+                onclick = download_btn.get_attribute("onclick")
+                href = download_btn.get_attribute("href")
+
+                print(f"onclick: {onclick}")
+                print(f"href: {href}")
+
+                # 提取 URL
+                if onclick:
+                    import re
+                    url_match = re.search(r"['\"]([^'\"]+)['\"]", onclick)
+                    if url_match:
+                        return url_match.group(1)
+
+                if href and "files.zsxq.com" in href:
+                    return href
+
+                return None
+
+            except Exception as e:
+                print(f"Selenium 获取下载链接失败: {e}")
+                import traceback
+                traceback.print_exc()
+                return None
+            finally:
+                try:
+                    driver.quit()
+                except:
+                    pass
+
+        except ImportError as e:
+            print(f"Selenium 未安装或导入失败: {e}")
+            return None
+        except Exception as e:
+            print(f"Selenium 获取下载链接失败: {e}")
+            return None
 
     def crawl_all(self, max_count: int = None, incremental: bool = True):
         """
