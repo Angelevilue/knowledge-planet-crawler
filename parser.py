@@ -222,6 +222,23 @@ class TopicParser:
                         "type": "file"
                     })
 
+            # 提取 <e type="web" href="..."> 标签中的链接
+            web_link_pattern = r'<e[^>]+type=["\']web["\'][^>]+href=["\']([^"\']+)["\'][^>]*>'
+            for match in re.finditer(web_link_pattern, text_content, re.IGNORECASE):
+                url = match.group(1)
+                # URL 解码
+                from urllib.parse import unquote
+                url = unquote(url)
+                # 检查是否是文件 URL
+                if re.search(r'\.(?:pdf|docx?|xlsx?|pptx?|txt|md)(?:\?|$)', url, re.IGNORECASE):
+                    if not any(f.get("url") == url for f in files):
+                        files.append({
+                            "name": self._extract_filename_from_url(url),
+                            "url": url,
+                            "size": 0,
+                            "type": "file"
+                        })
+
             # 提取直接的文件 URL
             file_url_pattern = r'(https?://[^\s"\'<>]+\.(?:pdf|docx?|xlsx?|pptx?|txt|md))'
             for match in re.finditer(file_url_pattern, text_content, re.IGNORECASE):
