@@ -66,6 +66,12 @@ python main.py crawl --test
 # Specify max count
 python main.py crawl --max 100
 
+# Crawl topics from a specific date onwards
+python main.py crawl --start-date 2025-01-01
+
+# Crawl topics within a date range
+python main.py crawl --start-date 2025-01-01 --end-date 2025-12-31
+
 # Disable incremental mode (re-crawl all)
 python main.py crawl --no-incremental
 ```

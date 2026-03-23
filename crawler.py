@@ -4,6 +4,7 @@
 """
 import os
 import time
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 import requests
@@ -303,17 +304,81 @@ class KnowledgePlanetCrawler:
             print(f"Selenium 获取下载链接失败: {e}")
             return None
 
-    def crawl_all(self, max_count: int = None, incremental: bool = True):
+    def _parse_date(self, date_str: str) -> datetime:
+        """
+        解析日期字符串为 datetime 对象
+
+        Args:
+            date_str: 日期字符串，格式 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS
+
+        Returns:
+            datetime 对象
+        """
+        date_str = date_str.strip()
+        for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return datetime.strptime(date_str, fmt)
+            except ValueError:
+                continue
+        raise ValueError(f"无法解析日期: {date_str}")
+
+    def _topic_in_date_range(self, topic: dict, start_date: datetime = None, end_date: datetime = None) -> bool:
+        """
+        检查话题是否在指定日期范围内
+
+        Args:
+            topic: 话题数据
+            start_date: 开始日期（包含）
+            end_date: 结束日期（包含）
+
+        Returns:
+            是否在范围内
+        """
+        create_time = topic.get("create_time")
+        if not create_time:
+            return True
+
+        try:
+            # 处理 ISO 格式: 2025-11-21T08:26:57.194+0800
+            create_time = create_time.replace('+0800', '+08:00')
+            topic_date = datetime.fromisoformat(create_time)
+
+            if start_date and topic_date < start_date:
+                return False
+            if end_date:
+                # 结束日期设置为当天 23:59:59
+                end_of_day = end_date.replace(hour=23, minute=59, second=59)
+                if topic_date > end_of_day:
+                    return False
+            return True
+        except Exception:
+            return True
+
+    def crawl_all(self, max_count: int = None, incremental: bool = True,
+                  start_date: str = None, end_date: str = None):
         """
         爬取所有话题
 
         Args:
             max_count: 最大爬取数量
             incremental: 是否增量爬取(只爬取新话题)
+            start_date: 开始日期 (YYYY-MM-DD)
+            end_date: 结束日期 (YYYY-MM-DD)
         """
         print("=" * 50)
         print(f"开始爬取群组: {self.group_id}")
         print(f"增量模式: {'是' if incremental else '否'}")
+
+        # 解析日期范围
+        start_dt = None
+        end_dt = None
+        if start_date:
+            start_dt = self._parse_date(start_date)
+            print(f"开始日期: {start_date}")
+        if end_date:
+            end_dt = self._parse_date(end_date)
+            print(f"结束日期: {end_date}")
+
         print("=" * 50)
 
         # 获取群组信息
@@ -325,6 +390,7 @@ class KnowledgePlanetCrawler:
             print("增量模式：跳过已爬取的话题")
 
         crawled = 0
+        skipped_by_date = 0
         page = 0
 
         while True:
@@ -340,6 +406,13 @@ class KnowledgePlanetCrawler:
 
                 for topic in topics:
                     topic_id = topic.get("topic_id") or topic.get("id")
+
+                    # 日期范围过滤
+                    if start_dt or end_dt:
+                        if not self._topic_in_date_range(topic, start_dt, end_dt):
+                            print(f"跳过日期范围外: {topic_id} ({topic.get('create_time', '')})")
+                            skipped_by_date += 1
+                            continue
 
                     # 增量模式检查
                     if incremental and self.storage.is_crawled(topic_id):
@@ -374,6 +447,8 @@ class KnowledgePlanetCrawler:
                 break
 
         print(f"\n爬取完成! 共爬取 {crawled} 条话题")
+        if skipped_by_date > 0:
+            print(f"日期范围外跳过: {skipped_by_date} 条")
         print(f"已累计爬取 {self.storage.get_crawled_count()} 条话题")
 
 
