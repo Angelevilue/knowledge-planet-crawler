@@ -172,6 +172,7 @@ class KnowledgePlanetCrawler:
         for file_info in parsed_topic.get("files", []):
             file_id = file_info.get("file_id")
             filename = file_info.get("name", f"file_{file_id}")
+            file_hash = file_info.get("hash", "")
             file_size = file_info.get("size", 0)
 
             # 检查是否已下载
@@ -188,7 +189,12 @@ class KnowledgePlanetCrawler:
                 if local_path:
                     file_info["local_path"] = local_path
             else:
-                print(f"无法获取文件下载链接: {filename} ({file_size / 1024 / 1024:.1f}MB)")
+                # 无法自动下载，记录信息供手动下载
+                print(f"⚠️ 文件需手动下载: {filename} ({file_size / 1024 / 1024:.1f}MB)")
+                print(f"   话题ID: {topic_id}")
+                print(f"   文件ID: {file_id}")
+                if file_hash:
+                    print(f"   Hash: {file_hash}")
 
     def _get_file_download_url(self, topic_id: str, file_id: str, filename: str) -> str:
         """
@@ -211,61 +217,149 @@ class KnowledgePlanetCrawler:
             from selenium.webdriver.support import expected_conditions as EC
             import time
             import os
+            import json
 
-            # 检查 Chrome profile 是否存在
-            profile_dir = "/Users/zephyrmuse/Projects/Crawler/Knowledge_planet/chrome_profile"
-            if not os.path.exists(profile_dir):
-                print(f"Chrome profile 不存在: {profile_dir}")
-                return None
+            # 使用独立的 Selenium profile 目录
+            profile_dir = "/Users/zephyrmuse/Projects/Crawler/Knowledge_planet/selenium_profile"
+            os.makedirs(profile_dir, exist_ok=True)
 
-            # 设置 Chrome 选项 - 不使用 headless，避免一些兼容性问题
+            # 设置 Chrome 选项
             chrome_options = Options()
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--window-size=1920,1080")
             chrome_options.add_argument(f"--user-data-dir={profile_dir}")
-            # 禁用弹出拦截
+            chrome_options.add_argument("--profile-directory=Default")
             chrome_options.add_argument("--disable-popup-blocking")
-            # 禁用自动化标识
+            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
             chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
             chrome_options.add_experimental_option("useAutomationExtension", False)
 
             service = Service()
             driver = webdriver.Chrome(service=service, options=chrome_options)
 
+            # 注入 cookies 登录
+            try:
+                # 加载 cookies
+                cookies_file = os.path.join(os.path.dirname(__file__), "cookies.json")
+                if os.path.exists(cookies_file):
+                    with open(cookies_file, "r") as f:
+                        cookies = json.load(f)
+
+                    # 先访问主域名设置 cookie
+                    driver.get("https://wx.zsxq.com/")
+                    time.sleep(2)
+
+                    # 添加 cookies
+                    for cookie in cookies:
+                        try:
+                            driver.add_cookie({
+                                "name": cookie.get("name"),
+                                "value": cookie.get("value"),
+                                "domain": cookie.get("domain", ".zsxq.com"),
+                                "path": cookie.get("path", "/"),
+                            })
+                        except Exception:
+                            pass
+
+                    driver.get("https://wx.zsxq.com/")
+                    time.sleep(2)
+            except Exception as e:
+                print(f"注入cookies失败: {e}")
+
             # 添加 js 脚本防止检测
-            driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-                "source": """
-                    Object.defineProperty(navigator, 'webdriver', {
-                        get: () => undefined
-                    })
-                """
-            })
+            try:
+                driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+                    "source": """
+                        Object.defineProperty(navigator, 'webdriver', {
+                            get: () => undefined
+                        })
+                    """
+                })
+            except Exception:
+                pass
 
             try:
                 # 打开话题页面
                 topic_url = f"https://wx.zsxq.com/d/{topic_id}"
                 print(f"打开页面: {topic_url}")
                 driver.get(topic_url)
-                time.sleep(8)
+                time.sleep(5)
 
                 # 检查是否需要登录
                 if "login" in driver.current_url.lower():
-                    print("需要登录，请先在浏览器中登录")
+                    print("需要登录，请手动扫码登录...")
+                    # 等待用户登录
+                    WebDriverWait(driver, 120).until(
+                        lambda d: "login" not in d.current_url.lower()
+                    )
+                    time.sleep(2)
+
+                # 查找文件元素 - 多种选择器
+                wait = WebDriverWait(driver, 20)
+                file_elem = None
+
+                selectors = [".file", "[class*='file']", ".file-item", "[class*='file-item']"]
+                for selector in selectors:
+                    try:
+                        file_elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                        if file_elem:
+                            print(f"找到文件元素: {selector}")
+                            break
+                    except Exception:
+                        continue
+
+                if not file_elem:
+                    print("未找到文件元素")
                     return None
 
-                # 查找文件元素
-                wait = WebDriverWait(driver, 20)
-                file_elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".file")))
-
                 # 获取文件信息
-                file_name_elem = file_elem.find_element(By.CSS_SELECTOR, ".file-name")
-                print(f"找到文件: {file_name_elem.text}")
+                try:
+                    file_name_elem = file_elem.find_element(By.CSS_SELECTOR, ".file-name, [class*='file-name']")
+                    print(f"找到文件: {file_name_elem.text}")
+                except Exception:
+                    pass
 
-                # 查找下载按钮
-                btn_wrapper = file_elem.find_element(By.CSS_SELECTOR, ".btn-wrapper")
-                download_btn = btn_wrapper.find_element(By.CSS_SELECTOR, ".btn.download")
+                # 查找下载按钮 - 多种选择器
+                download_btn = None
+                btn_selectors = [
+                    ".btn.download",
+                    ".btn-wrapper .btn",
+                    "[class*='download']",
+                    "[class*='btn']",
+                    ".file-actions .btn",
+                ]
+
+                for selector in btn_selectors:
+                    try:
+                        buttons = file_elem.find_elements(By.CSS_SELECTOR, selector)
+                        for btn in buttons:
+                            if btn.is_displayed():
+                                download_btn = btn
+                                print(f"找到下载按钮: {selector}")
+                                break
+                        if download_btn:
+                            break
+                    except Exception:
+                        continue
+
+                if not download_btn:
+                    print("未找到下载按钮，尝试其他方式...")
+                    # 尝试从整个页面查找
+                    try:
+                        all_btns = driver.find_elements(By.CSS_SELECTOR, ".btn, [class*='btn']")
+                        for btn in all_btns:
+                            if btn.is_displayed() and ("下载" in btn.text or "download" in btn.get_attribute("class", "").lower()):
+                                download_btn = btn
+                                print(f"找到下载按钮(文本匹配): {btn.text}")
+                                break
+                    except Exception:
+                        pass
+
+                if not download_btn:
+                    print("无法找到下载按钮")
+                    return None
 
                 # 获取 onclick 或 href
                 onclick = download_btn.get_attribute("onclick")
@@ -294,7 +388,7 @@ class KnowledgePlanetCrawler:
             finally:
                 try:
                     driver.quit()
-                except:
+                except Exception:
                     pass
 
         except ImportError as e:
