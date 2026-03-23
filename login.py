@@ -220,6 +220,7 @@ class WeChatLogin:
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "Referer": "https://wx.zsxq.com/",
+            "Origin": "https://wx.zsxq.com",
             "Cookie": cookie_str,
         }
 

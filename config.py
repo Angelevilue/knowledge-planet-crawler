@@ -10,7 +10,7 @@ COOKIES_FILE = os.path.join(BASE_DIR, "cookies.json")
 STATE_FILE = os.path.join(BASE_DIR, "state.json")
 
 # 群组ID (需要修改为实际的知识星球群组ID)
-GROUP_ID = "51111552522544"
+GROUP_ID = "88855285851452"
 
 # API配置
 API_BASE_URL = "https://api.zsxq.com/v2"

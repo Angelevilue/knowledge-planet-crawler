@@ -55,7 +55,12 @@ def crawl_command(args):
 
     try:
         crawler = KnowledgePlanetCrawler(group_id=args.group)
-        crawler.crawl_all(max_count=args.max, incremental=not args.no_incremental)
+        crawler.crawl_all(
+            max_count=args.max,
+            incremental=not args.no_incremental,
+            start_date=args.start_date,
+            end_date=args.end_date
+        )
     except ValueError as e:
         print(f"错误: {e}")
         print("\n请先运行 'python main.py login' 进行登录")
@@ -78,10 +83,13 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python main.py login                    # 登录知识星球
-  python main.py crawl --group 12345678   # 爬取指定群组
-  python main.py crawl --test            # 测试模式(爬取一页)
-  python main.py schedule --interval 3600 # 启动调度器(每小时检查一次)
+  python main.py login                                      # 登录知识星球
+  python main.py crawl --group 12345678                     # 爬取指定群组
+  python main.py crawl --test                               # 测试模式(爬取一页)
+  python main.py crawl --start-date 2025-01-01              # 爬取指定日期之后的话题
+  python main.py crawl --start-date 2025-01-01 --end-date 2025-12-31  # 爬取指定日期范围
+  python main.py crawl --no-incremental                     # 禁用增量模式(重新爬取所有)
+  python main.py schedule --interval 3600                    # 启动调度器(每小时检查一次)
         """
     )
 
@@ -99,6 +107,10 @@ def main():
     crawl_parser.add_argument("--test", action="store_true", help="测试模式(只爬取一页)")
     crawl_parser.add_argument("--max", type=int, default=None, help="最大爬取数量")
     crawl_parser.add_argument("--no-incremental", action="store_true", help="禁用增量模式")
+    crawl_parser.add_argument("--start-date", type=str, default=None,
+                            help="开始日期 (YYYY-MM-DD)")
+    crawl_parser.add_argument("--end-date", type=str, default=None,
+                            help="结束日期 (YYYY-MM-DD)")
 
     # schedule命令
     schedule_parser = subparsers.add_parser("schedule", help="启动增量调度器")
