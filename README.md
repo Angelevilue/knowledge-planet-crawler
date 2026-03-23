@@ -7,9 +7,11 @@ A Python crawler for [知识星球 (Knowledge Planet)](https://wx.zsxq.com/) - a
 - WeChat QR code login via Selenium (or manual cookie import)
 - Crawl topics and save as Markdown
 - Download images, PDFs, DOCX and other attachments
+- **Date range filtering** - crawl topics from specific dates
 - Incremental crawling (only new topics)
 - Organized by date
 - Metadata storage (author, time, likes, comments)
+- Automatic retry on API rate limiting
 
 ## Requirements
 
@@ -70,9 +72,9 @@ python main.py crawl --max 100
 python main.py crawl --start-date 2025-01-01
 
 # Crawl topics within a date range
-python main.py crawl --start-date 2025-01-01 --end-date 2025-12-31
+python main.py crawl --start-date 2025-01-15 --end-date 2025-01-15
 
-# Disable incremental mode (re-crawl all)
+# Disable incremental mode (re-crawl all, ignores state file)
 python main.py crawl --no-incremental
 ```
 
@@ -95,7 +97,7 @@ output/
 │   │   ├── content.md       # Markdown content
 │   │   ├── metadata.json    # Topic metadata
 │   │   ├── images/          # Downloaded images
-│   │   └── files/          # Downloaded attachments (PDF, DOCX, etc.)
+│   │   └── files/           # Downloaded attachments (PDF, DOCX, etc.)
 │   └── topic_...
 └── 2025-11-20/
     └── ...
@@ -109,15 +111,33 @@ output/
 | `python main.py login --manual` | Manual cookie import |
 | `python main.py crawl` | Crawl topics (incremental) |
 | `python main.py crawl --test` | Test mode (first page only) |
-| `python main.py crawl --no-incremental` | Full re-crawl |
+| `python main.py crawl --start-date YYYY-MM-DD --end-date YYYY-MM-DD` | Crawl specific date range |
+| `python main.py crawl --no-incremental` | Full re-crawl (ignores state) |
 | `python main.py schedule` | Run incremental scheduler |
+
+## How Date Range Filtering Works
+
+**Note:** The Knowledge Planet API does not support direct date filtering. The crawler works by:
+
+1. Fetching topics from newest to oldest using pagination
+2. Filtering topics client-side based on your specified date range
+3. Continuing to paginate until it passes your target date
+
+This means crawling older dates (e.g., February when starting from March) requires more API calls and time.
+
+## State Management
+
+- `state.json` - Tracks crawled topic IDs to avoid duplicates in incremental mode
+- Use `--no-incremental` to ignore state and re-crawl
+- To completely reset: `rm state.json`
 
 ## Notes
 
 - Cookies expire periodically. Re-login if you get "Unauthorized" errors.
-- Some topics may fail to fetch due to API limitations - these are skipped automatically.
+- The API has rate limits - the crawler automatically retries with delays.
 - File downloads require valid cookies with proper authentication tokens.
 - Be respectful of rate limits when crawling.
+- Some files may require manual download if API access is restricted (the crawler will print instructions).
 
 ## Troubleshooting
 
@@ -130,6 +150,18 @@ output/
 **Empty results**
 - Check if GROUP_ID is correct and you have access to the group.
 - Verify cookies are valid by checking if you can access the group in Chrome.
+
+**API returns "内部错误" (Internal Error)**
+- This is rate limiting. The crawler will automatically retry after a delay.
+- Wait a few minutes before trying again.
+
+**Date range filtering not working / wrong dates saved**
+- Ensure you're using `--no-incremental` if you deleted output files and want to re-crawl.
+- The API pagination may take time to reach older dates - be patient.
+
+**Files not re-crawled after deletion**
+- The `state.json` file remembers crawled topic IDs.
+- Either use `--no-incremental` flag, or delete `state.json` to reset.
 
 ## License
 
